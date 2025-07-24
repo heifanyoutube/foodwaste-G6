@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>家庭 QR Code 借用系統</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 1rem; background: #f0f2f5; }
+    header, footer { background: #fff; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .card { background: #fff; padding: 1rem; border-radius: 1rem; box-shadow: 0 0 8px rgba(0,0,0,0.1); max-width: 300px; margin: auto; text-align: center; }
+    img { max-width: 100%; border-radius: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; background: #007bff; color: #fff; border-radius: 0.5rem; cursor: pointer; margin: 1rem 0; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .notice, .tutorial, .ranking { margin: 1rem 0; background: #fff; padding: 1rem; border-radius: 0.5rem; }
+    .admin { display: none; margin-top: 2rem; }
+    #qrCard { display: none; }
+    #returnHomeBtn { margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>📢 公告欄</h2>
+    <div id="notice">尚無公告</div>
+  </header>
+
+  <section class="tutorial">
+    <h3>🧾 新手教學</h3>
+    <ol>
+      <li>輸入名字</li>
+      <li>系統會自動分配你所需數量的 QR Code，並逐一顯示</li>
+      <li>完成每個 QR Code 後請輸入剩餘積分</li>
+    </ol>
+  </section>
+
+  <div style="text-align:center">
+    <label>你的名字：<input type="text" id="username" /></label>
+    <label>需要幾個 QR Code：
+      <input type="number" id="needCount" min="1" max="9" value="1" style="width:4rem" />
+    </label>
+    <button onclick="borrowNext()">我要借用</button>
+    <div>剩餘可借用數量：<span id="availableCount">0</span></div>
+  </div>
+
+  <div class="card" id="qrCard">
+    <img id="qrImage" src="" alt="QR Code" />
+    <h3 id="qrName"></h3>
+    <p id="qrStatus"></p>
+    <button onclick="submitScore()">完成並輸入積分</button><br />
+    <button onclick="nextPage()">下一頁</button>
+    <button id="returnHomeBtn" onclick="returnHome()" style="display:none;">返回首頁</button>
+  </div>
+
+  <div class="ranking">
+    <h3>🏆 積分排行榜</h3>
+    <ul id="rankingList"></ul>
+  </div>
+
+  <footer>
+    <button onclick="adminLogin()">🔐 管理員登入</button>
+    <button onclick="adminLogout()" id="adminLogoutBtn" style="display:none;">登出管理員</button>
+    <div class="admin" id="adminPanel">
+      <h3>管理員控制台</h3>
+      <label>公告訊息：<br />
+        <textarea id="adminNotice" rows="3" style="width:100%"></textarea>
+      </label>
+      <button onclick="updateNotice()">更新公告</button>
+      <h4>借用狀態及釋放二維碼</h4>
+      <div id="adminQRCodes"></div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import { getDatabase, ref, set, get, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCUAzmBwdVs8wKpR9i4HB2x4E08xv-_8rE",
+      authDomain: "g6-sys.firebaseapp.com",
+      databaseURL: "https://g6-sys-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "g6-sys",
+      storageBucket: "g6-sys.firebasestorage.app",
+      messagingSenderId: "874000345226",
+      appId: "1:874000345226:web:acb39a499e827135e3e573"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // QR Code 清單與名稱
+    const qrList = [
+      { name: "Manhim", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278749/WhatsApp_Image_2025-07-22_at_12.39.27_PM_xkvl8y.jpg" },
+      { name: "Yung", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278749/WhatsApp_Image_2025-07-22_at_12.39.28_PM_1_sio7dp.jpg" },
+      { name: "Veronica", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_2_ofjmf1.jpg" },
+      { name: "Ha2", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_s69ynh.jpg" },
+      { name: "Yvonne", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_3_qx6dew.jpg" },
+      { name: "Bobby", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.28_PM_2_sjey4c.jpg" },
+      { name: "Ha", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278747/WhatsApp_Image_2025-07-22_at_12.39.30_PM_qp7i4b.jpg" },
+      { name: "Oi", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_1_a5sp5c.jpg" },
+      { name: "ting", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753339116/ting_g1afq7.jpg" }
+    ];
+
+    let user = '';
+    let needCount = 1; // 用戶需要多少個
+    let borrowedIndexes = []; // 用戶被分配的二維碼索引陣列
+    let currentIndexInBorrowed = 0; // 目前顯示第幾個借用的二維碼
+
+    // 更新剩餘可借用數量顯示
+    function updateAvailableCount() {
+      get(ref(db, 'qrcodes')).then(snap => {
+        const data = snap.val() || {};
+        let count = 0;
+        for(let i = 0; i < qrList.length; i++) {
+          if(!data[i]) count++;
+        }
+        document.getElementById('availableCount').textContent = count;
+      });
+    }
+
+    // 借用流程
+    function borrowNext() {
+      user = document.getElementById('username').value.trim();
+      if (!user) return alert('請輸入名字');
+      needCount = parseInt(document.getElementById('needCount').value);
+      if(isNaN(needCount) || needCount < 1) return alert('請輸入有效的數量');
+      get(ref(db, 'qrcodes')).then(snap => {
+        const data = snap.val() || {};
+        borrowedIndexes = [];
+        for(let i = 0; i < qrList.length; i++) {
+          if (!data[i] && borrowedIndexes.length < needCount) {
+            borrowedIndexes.push(i);
+          }
+        }
+        if(borrowedIndexes.length < needCount) {
+          alert('剩餘可用數量不足，請減少借用數量');
+          return;
+        }
+        // 寫入借用資料到 firebase（包含時間）
+        const updates = {};
+        const now = Date.now();
+        borrowedIndexes.forEach(i => {
+          updates[`qrcodes/${i}`] = { by: user, time: now, score: 0 };
+        });
+        update(ref(db), updates).then(() => {
+          currentIndexInBorrowed = 0;
+          showQRCode(borrowedIndexes[currentIndexInBorrowed]);
+          updateAvailableCount();
+        });
+      });
+    }
+
+    // 顯示指定 QR Code
+    function showQRCode(index) {
+      document.getElementById('qrImage').src = qrList[index].url;
+      document.getElementById('qrName').textContent = qrList[index].name;
+      document.getElementById('qrStatus').textContent = `已分配給 ${user}`;
+      document.getElementById('qrCard').style.display = 'block';
+      document.getElementById('returnHomeBtn').style.display = 'none';
+    }
+
+    // 用戶輸入積分並自動跳下一頁
+    function submitScore() {
+      if (borrowedIndexes.length === 0) return alert('目前沒有可輸入積分的二維碼');
+      const qrIndex = borrowedIndexes[currentIndexInBorrowed];
+      const scoreStr = prompt(`請輸入 ${qrList[qrIndex].name} 的剩餘積分（數字）`);
+      if (!scoreStr || isNaN(scoreStr)) return alert('請輸入有效數字');
+      const score = parseInt(scoreStr);
+      update(ref(db, `qrcodes/${qrIndex}`), { score }).then(() => {
+        alert(`已更新 ${qrList[qrIndex].name} 的積分`);
+        nextPage();
+      });
+    }
+
+    // 下一個二維碼或結束借用流程
+    function nextPage() {
+      currentIndexInBorrowed++;
+      if(currentIndexInBorrowed >= borrowedIndexes.length) {
+        // 已看完所有分配的二維碼
+        document.getElementById('qrCard').style.display = 'none';
+        alert('已完成所有二維碼借用流程，謝謝！');
+        borrowedIndexes = [];
+        currentIndexInBorrowed = 0;
+        updateAvailableCount();
+      } else {
+        showQRCode(borrowedIndexes[currentIndexInBorrowed]);
+      }
+    }
+
+    // 返回首頁（重置介面）
+    function returnHome() {
+      document.getElementById('qrCard').style.display = 'none';
+      borrowedIndexes = [];
+      currentIndexInBorrowed = 0;
+      updateAvailableCount();
+    }
+
+    // 管理員登入
+    function adminLogin() {
+      const a = prompt('帳號');
+      const p = prompt('密碼');
+      if (a === 'admin' && p === '1234') {
+        document.getElementById('adminPanel').style.display = 'block';
+        document.getElementById('adminLogoutBtn').style.display = 'inline-block';
+        loadAdminData();
+      } else {
+        alert('登入失敗');
+      }
+    }
+
+    // 管理員登出
+    function adminLogout() {
+      document.getElementById('adminPanel').style.display = 'none';
+      document.getElementById('adminLogoutBtn').style.display = 'none';
+    }
+
+    // 載入管理員資料
+    function loadAdminData() {
+      get(ref(db, 'notice')).then(snap => {
+        const n = snap.val();
+        document.getElementById('adminNotice').value = n ? n.text : '';
+      });
+      onValue(ref(db, 'qrcodes'), snap => {
+        const data = snap.val() || {};
+        const container = document.getElementById('adminQRCodes');
+        container.innerHTML = qrList.map((qr, i) => {
+          const info = data[i];
+          const timeStr = info && info.time ? new Date(info.time).toLocaleString() : '-';
+          return `<div>
+            <b>${qr.name}</b> - ${info ? `借出給 ${info.by} (積分: ${info.score || 0})，借用時間: ${timeStr}` : '未借出'}
+            ${info ? `<button onclick="release(${i})">釋放</button>` : ''}
+          </div>`;
+        }).join('');
+      });
+      updateAvailableCount();
+    }
+
+    // 管理員釋放指定二維碼
+    function release(i) {
+      remove(ref(db, `qrcodes/${i}`)).then(() => updateAvailableCount());
+    }
+
+    // 更新公告
+    function updateNotice() {
+      const text = document.getElementById('adminNotice').value.trim();
+      set(ref(db, 'notice'), { text });
+    }
+
+    // 實時監聽公告欄更新
+    onValue(ref(db, 'notice'), snap => {
+      const n = snap.val();
+      document.getElementById('notice').textContent = n ? n.text : '尚無公告';
+    });
+
+   // 積分排行榜更新 - 顯示每個借出二維碼名稱及積分
+onValue(ref(db, 'qrcodes'), snap => {
+  const data = snap.val() || {};
+  // 收集已借出且有積分的二維碼資料
+  const qrScores = [];
+  qrList.forEach((qr, i) => {
+    if(data[i] && data[i].score !== undefined) {
+      qrScores.push({ name: qr.name, score: data[i].score });
+    }
+  });
+  // 依分數高低排序
+  qrScores.sort((a, b) => b.score - a.score);
+  // 顯示在排行榜中
+  document.getElementById('rankingList').innerHTML = qrScores.map(qr => `<li>${qr.name} - ${qr.score} 分</li>`).join('');
+});
+
+
+    // 綁定全域函式，給 HTML 呼叫
+    window.borrowNext = borrowNext;
+    window.submitScore = submitScore;
+    window.nextPage = nextPage;
+    window.returnHome = returnHome;
+    window.adminLogin = adminLogin;
+    window.adminLogout = adminLogout;
+    window.updateNotice = updateNotice;
+    window.release = release;
+
+    // 初始更新剩餘數量
+    updateAvailableCount();
+
+  </script>
+</body>
+</html>
