@@ -270,6 +270,7 @@
   let systemStatus = "open";
   let systemReason = "";
   let qrcodeOrder = [];
+  let isAdmin = false;
 
   // 按鈕啟用判斷
   function checkBorrowBtn() {
@@ -311,6 +312,7 @@
     });
   }
 
+  // 借用邏輯改為優先順序依序找空閒
   function borrowNext() {
     if(systemStatus !== "open") {
       alert("目前系統不開放借用，請稍後再試。");
@@ -325,7 +327,7 @@
       const data = snap.val() || {};
       borrowedIndexes = [];
       for(const qrIndex of qrcodeOrder) {
-        if(!data[qrIndex] && borrowedIndexes.length < needCount) {
+        if(!data[qrIndex]) {
           borrowedIndexes.push(qrIndex);
         }
         if(borrowedIndexes.length >= needCount) break;
@@ -376,25 +378,88 @@
       currentIndexInBorrowed = 0;
       updateAvailableCount();
       // 顯示返回首頁按鈕
-      document.getElementById('returnHomeBtn').style.display = 'block';
+      document.getElementById('returnHomeBtn').style.display = 'inline-block';
     } else {
       showQRCode(borrowedIndexes[currentIndexInBorrowed]);
     }
   }
 
   function returnHome() {
+    document.getElementById('qrCard').style.display = 'none';
     document.getElementById('returnHomeBtn').style.display = 'none';
-    document.getElementById('username').value = "";
-    document.getElementById('needCount').value = "1";
-    document.getElementById('borrowBtn').disabled = true;
   }
 
-  // 管理員登入 (簡易示範，實務請換安全做法)
-  let isAdmin = false;
+  // 讀取公告
+  function loadNotice() {
+    get(ref(db, 'notice')).then(snap => {
+      const v = snap.val() || "尚無公告";
+      document.getElementById('notice').textContent = v;
+      if(isAdmin) {
+        document.getElementById('adminNotice').value = v;
+      }
+    });
+  }
+
+  // 管理員公告更新
+  function updateNotice() {
+    if(!isAdmin) return alert('請先登入管理員');
+    const v = document.getElementById('adminNotice').value.trim();
+    set(ref(db, 'notice'), v).then(() => {
+      alert('公告已更新');
+      loadNotice();
+    });
+  }
+
+  // 載入系統狀態
+  function loadSystemStatus() {
+    get(ref(db, 'systemStatus')).then(snap => {
+      const val = snap.val();
+      if(val) {
+        systemStatus = val.status || "open";
+        systemReason = val.reason || "";
+        const radios = document.querySelectorAll('input[name="systemStatus"]');
+        radios.forEach(r => r.checked = (r.value === systemStatus));
+        document.getElementById('customReason').value = systemReason;
+        if(systemStatus === "custom") {
+          document.getElementById('customReason').style.display = "block";
+        } else {
+          document.getElementById('customReason').style.display = "none";
+        }
+        showSystemStatus();
+      }
+    });
+  }
+
+  // 系統狀態更新
+  function updateSystemStatus() {
+    if(!isAdmin) return alert('請先登入管理員');
+    const radios = document.querySelectorAll('input[name="systemStatus"]');
+    let newStatus = "open";
+    radios.forEach(r => { if(r.checked) newStatus = r.value; });
+    const reason = document.getElementById('customReason').value.trim();
+    set(ref(db, 'systemStatus'), { status: newStatus, reason: reason }).then(() => {
+      systemStatus = newStatus;
+      systemReason = reason;
+      alert('系統狀態已更新');
+      showSystemStatus();
+    });
+  }
+
+  // 當切換系統狀態時顯示/隱藏特殊原因輸入框
+  document.querySelectorAll('input[name="systemStatus"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.value === "custom" && radio.checked) {
+        document.getElementById('customReason').style.display = "block";
+      } else {
+        document.getElementById('customReason').style.display = "none";
+      }
+    });
+  });
+
+  // 管理員登入登出
   function adminLogin() {
-    const acc = document.getElementById('adminAccount').value;
-    const pwd = document.getElementById('adminPassword').value;
-    // 範例帳密：admin / 1234
+    const acc = document.getElementById('adminAccount').value.trim();
+    const pwd = document.getElementById('adminPassword').value.trim();
     if(acc === 'admin' && pwd === '1234') {
       isAdmin = true;
       alert('管理員登入成功');
@@ -402,189 +467,174 @@
       document.getElementById('adminLogoutBtn').style.display = 'block';
       document.getElementById('adminPanel').style.display = 'block';
       loadAdminPanel();
+      loadNotice();
+      loadSystemStatus();
     } else {
       alert('帳號或密碼錯誤');
     }
   }
+
   function adminLogout() {
     isAdmin = false;
     document.getElementById('adminLoginForm').style.display = 'block';
     document.getElementById('adminLogoutBtn').style.display = 'none';
     document.getElementById('adminPanel').style.display = 'none';
+    loadNotice();
+    loadSystemStatus();
   }
 
-  // 管理員公告更新
-  function updateNotice() {
-    if(!isAdmin) return alert('請先登入管理員');
-    const noticeText = document.getElementById('adminNotice').value;
-    set(ref(db, 'system/notice'), noticeText).then(() => {
-      alert('公告已更新');
-      document.getElementById('notice').textContent = noticeText || "尚無公告";
-    });
-  }
-
-  // 系統狀態更新
-  function updateSystemStatus() {
-    if(!isAdmin) return alert('請先登入管理員');
-    const radios = document.querySelectorAll('input[name=systemStatus]');
-    let val = null;
-    radios.forEach(r => { if(r.checked) val = r.value; });
-    if(!val) return alert('請選擇系統狀態');
-    const reason = (val === 'custom') ? document.getElementById('customReason').value : '';
-    set(ref(db, 'system/status'), { status: val, reason }).then(() => {
-      alert('系統狀態已更新');
-      loadSystemStatus();
-    });
-  }
-
-  // 載入公告
-  function loadNotice() {
-    onValue(ref(db, 'system/notice'), snap => {
-      const val = snap.val();
-      document.getElementById('notice').textContent = val || "尚無公告";
-      if(isAdmin) document.getElementById('adminNotice').value = val || "";
-    });
-  }
-
-  // 載入系統狀態
-  function loadSystemStatus() {
-    onValue(ref(db, 'system/status'), snap => {
-      const val = snap.val() || {};
-      systemStatus = val.status || "open";
-      systemReason = val.reason || "";
-      showSystemStatus();
-      if(isAdmin) {
-        const radios = document.querySelectorAll('input[name=systemStatus]');
-        radios.forEach(r => { r.checked = (r.value === systemStatus); });
-        document.getElementById('customReason').value = systemReason;
-        document.getElementById('customReason').style.display = (systemStatus === 'custom') ? 'block' : 'none';
-      }
-    });
-  }
-
-  // 顯示或隱藏自訂原因欄位
-  document.getElementById('customReason').style.display = 'none';
-  document.querySelectorAll('input[name=systemStatus]').forEach(radio => {
-    radio.addEventListener('change', e => {
-      if(e.target.value === 'custom') {
-        document.getElementById('customReason').style.display = 'block';
-      } else {
-        document.getElementById('customReason').style.display = 'none';
-      }
-    });
-  });
-
-  // 管理員釋放借用 QR Code
+  // 讀取並顯示管理員面板中 QR Code 借用狀態
   function loadAdminPanel() {
-    // 讀取借用狀態
     get(ref(db, 'qrcodes')).then(snap => {
       const data = snap.val() || {};
-      const adminQRCodesDiv = document.getElementById('adminQRCodes');
-      adminQRCodesDiv.innerHTML = "";
-      for(let i = 0; i < qrList.length; i++) {
-        const borrowed = data[i];
-        const info = borrowed ? `已借出給：${borrowed.by}，積分：${borrowed.score || 0}` : '未借用';
-        const btnHTML = borrowed ? `<button onclick="releaseQRCode(${i})">釋放</button>` : '';
-        adminQRCodesDiv.innerHTML += `<div>${qrList[i].name} - ${info} ${btnHTML}</div>`;
+      const container = document.getElementById('adminQRCodes');
+      container.innerHTML = "";
+      for(let i=0; i < qrList.length; i++) {
+        const status = data[i];
+        let statusText = "未借用";
+        let byText = "";
+        if(status) {
+          byText = status.by || "";
+          statusText = `借用中：${byText}，積分：${status.score || 0}`;
+        }
+        const div = document.createElement('div');
+        div.textContent = `${qrList[i].name} - ${statusText}`;
+        if(status) {
+          const btn = document.createElement('button');
+          btn.textContent = '釋放';
+          btn.onclick = () => {
+            if(confirm(`確定要釋放 ${qrList[i].name} 的借用狀態？`)) {
+              remove(ref(db, `qrcodes/${i}`)).then(() => {
+                alert('已釋放');
+                loadAdminPanel();
+                updateAvailableCount();
+                loadRanking();
+              });
+            }
+          };
+          div.appendChild(btn);
+        }
+        container.appendChild(div);
       }
     });
-    loadQrcodeOrder();
+    loadQrcodeOrderPanel();
   }
 
-  function releaseQRCode(index) {
-    if(!isAdmin) return alert('請先登入管理員');
-    remove(ref(db, `qrcodes/${index}`)).then(() => {
-      alert(`已釋放 ${qrList[index].name} 的借用狀態`);
-      loadAdminPanel();
-      updateAvailableCount();
-    });
-  }
-
-  // 儲存與載入 QR Code 借用優先順序
-  function loadQrcodeOrder() {
-    get(ref(db, 'system/qrcodeOrder')).then(snap => {
-      const val = snap.val();
-      qrcodeOrder = Array.isArray(val) && val.length === qrList.length ? val : [...Array(qrList.length).keys()];
-      renderQrcodeOrderPanel();
-    });
-  }
-
-  function renderQrcodeOrderPanel() {
-    const panel = document.getElementById('qrcodeOrderPanel');
-    panel.innerHTML = "";
-    for(let i = 0; i < qrList.length; i++) {
-      const orderIdx = qrcodeOrder[i];
-      let options = "";
-      for(let j = 1; j <= qrList.length; j++) {
-        options += `<option value="${j}" ${qrcodeOrder.indexOf(i) + 1 === j ? "selected" : ""}>${j}</option>`;
+  // 讀取二維碼借用順序並顯示排序控制面板
+  function loadQrcodeOrderPanel() {
+    get(ref(db, 'qrcodeOrder')).then(snap => {
+      const order = snap.val();
+      if(Array.isArray(order) && order.length === qrList.length) {
+        qrcodeOrder = order;
+      } else {
+        // 預設順序 0~8
+        qrcodeOrder = [...Array(qrList.length).keys()];
       }
-      panel.innerHTML += `
-        <div>
-          <label>${qrList[i].name} 借用優先順序：
-            <select data-index="${i}" onchange="onOrderChange(event)">${options}</select>
-          </label>
-        </div>`;
-    }
+      const container = document.getElementById('qrcodeOrderPanel');
+      container.innerHTML = "";
+      for(let i=0; i < qrList.length; i++) {
+        const div = document.createElement('div');
+        const label = document.createElement('label');
+        label.textContent = qrList[i].name + " 順序： ";
+        const select = document.createElement('select');
+        select.dataset.idx = i;
+        for(let n=1; n <= qrList.length; n++) {
+          const opt = document.createElement('option');
+          opt.value = n;
+          opt.textContent = n;
+          select.appendChild(opt);
+        }
+        // 設定目前順序
+        const pos = qrcodeOrder.indexOf(i);
+        select.value = pos + 1;
+        label.appendChild(select);
+        div.appendChild(label);
+        container.appendChild(div);
+      }
+    });
   }
 
-  function onOrderChange(e) {
-    const idx = parseInt(e.target.getAttribute('data-index'));
-    const val = parseInt(e.target.value);
-    // 重新排序 qrcodeOrder 陣列
-    // 先找原本 i 在 qrcodeOrder 中的位置
-    const oldPos = qrcodeOrder.indexOf(idx);
-    if(oldPos === val - 1) return; // 無變動
-    // 移除原本位置的 i
-    qrcodeOrder.splice(oldPos,1);
-    // 插入到新位置
-    qrcodeOrder.splice(val - 1, 0, idx);
-    renderQrcodeOrderPanel();
-  }
-
+  // 儲存優先順序設定
   function saveQrcodeOrder() {
     if(!isAdmin) return alert('請先登入管理員');
-    set(ref(db, 'system/qrcodeOrder'), qrcodeOrder).then(() => {
-      alert('借用優先順序已儲存');
+    const selects = document.querySelectorAll('#qrcodeOrderPanel select');
+    let arr = [];
+    selects.forEach(sel => {
+      arr.push({ idx: parseInt(sel.dataset.idx), order: parseInt(sel.value) });
+    });
+    // 根據 order 排序，再取 idx
+    arr.sort((a,b) => a.order - b.order);
+    const newOrder = arr.map(a => a.idx);
+    set(ref(db, 'qrcodeOrder'), newOrder).then(() => {
+      qrcodeOrder = newOrder;
+      alert('優先順序已更新');
     });
   }
 
-  // 載入積分排行榜
+  // 積分排行榜，改為顯示二維碼名稱 + 積分
   function loadRanking() {
     get(ref(db, 'qrcodes')).then(snap => {
       const data = snap.val() || {};
-      const scores = {};
-      for(let i = 0; i < qrList.length; i++) {
-        const d = data[i];
-        if(d && d.by && typeof d.score === "number") {
-          if(!scores[d.by]) scores[d.by] = 0;
-          scores[d.by] += d.score;
-        }
-      }
-      const rankList = Object.entries(scores)
-        .sort((a,b) => b[1] - a[1]);
       const ul = document.getElementById('rankingList');
       ul.innerHTML = "";
-      if(rankList.length === 0) {
+      let hasData = false;
+      for(let i = 0; i < qrList.length; i++) {
+        const qrName = qrList[i].name;
+        const qrData = data[i];
+        const score = qrData && typeof qrData.score === "number" ? qrData.score : 0;
+        if(score > 0) hasData = true;
+        ul.innerHTML += `<li>${qrName}：${score} 分</li>`;
+      }
+      if(!hasData) {
         ul.innerHTML = "<li>暫無積分資料</li>";
-      } else {
-        rankList.forEach(([name, totalScore]) => {
-          ul.innerHTML += `<li>${name}：${totalScore} 分</li>`;
-        });
       }
     });
   }
 
-  // 綁定輸入事件檢查按鈕
+  // 監聽輸入欄位，控制按鈕啟用狀態
   document.getElementById('username').addEventListener('input', checkBorrowBtn);
   document.getElementById('needCount').addEventListener('input', checkBorrowBtn);
 
-  // 初始載入
-  window.onload = () => {
+  // 頁面初始化
+  function init() {
     loadNotice();
     loadSystemStatus();
     updateAvailableCount();
     loadRanking();
-  };
+
+    // 預設借用優先順序為0~8
+    qrcodeOrder = [...Array(qrList.length).keys()];
+
+    checkBorrowBtn();
+
+    // 監聽 Firebase qrcodes 更新，及更新剩餘數量與排行榜
+    onValue(ref(db, 'qrcodes'), () => {
+      updateAvailableCount();
+      loadRanking();
+      if(isAdmin) loadAdminPanel();
+    });
+
+    onValue(ref(db, 'notice'), () => {
+      loadNotice();
+    });
+
+    onValue(ref(db, 'systemStatus'), () => {
+      loadSystemStatus();
+    });
+  }
+
+  window.adminLogin = adminLogin;
+  window.adminLogout = adminLogout;
+  window.updateNotice = updateNotice;
+  window.updateSystemStatus = updateSystemStatus;
+  window.borrowNext = borrowNext;
+  window.submitScore = submitScore;
+  window.nextPage = nextPage;
+  window.returnHome = returnHome;
+  window.saveQrcodeOrder = saveQrcodeOrder;
+
+  init();
+
 </script>
 
 </body>
