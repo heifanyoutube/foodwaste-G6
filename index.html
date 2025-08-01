@@ -1,5 +1,591 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
-<head><meta charset="UTF-8"><title>測試系統</title></head>
-<body><h1>系統已部署</h1></body>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>家庭 QR Code 借用系統 (優化版)</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+      Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    margin: 0;
+    padding: 1rem;
+    background: #f9fafb;
+    color: #222;
+  }
+  header, footer {
+    background: #fff;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    max-width: 900px;
+    margin: 0 auto 1rem auto;
+    border-radius: 0.5rem;
+  }
+  h2, h3, h4 {
+    margin: 0 0 0.5rem 0;
+    font-weight: 600;
+  }
+  .tutorial, .notice, .ranking, .admin, #adminLoginForm {
+    background: #fff;
+    max-width: 900px;
+    margin: 1rem auto;
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 10px rgb(0 0 0 / 0.05);
+  }
+  label {
+    display: block;
+    margin-bottom: 0.6rem;
+    font-weight: 500;
+  }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%;
+    max-width: 320px;
+    padding: 0.4rem 0.6rem;
+    font-size: 1rem;
+    border-radius: 0.4rem;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease;
+  }
+  input[type=text]:focus, input[type=number]:focus, input[type=password]:focus, textarea:focus, select:focus {
+    border-color: #3b82f6;
+    outline: none;
+  }
+  button {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.6rem 1.4rem;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 1rem;
+    transition: background-color 0.3s ease;
+  }
+  button:disabled {
+    background: #a5b4fc;
+    cursor: not-allowed;
+  }
+  button:hover:not(:disabled) {
+    background: #2563eb;
+  }
+  #systemStatusDisplay {
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: #444;
+    text-align: center;
+    margin-bottom: 1rem;
+    transition: color 0.3s ease;
+  }
+  #systemStatusDisplay.open {
+    color: #16a34a; /* 綠色 */
+  }
+  #systemStatusDisplay.closed {
+    color: #dc2626; /* 紅色 */
+  }
+  #systemStatusDisplay.custom {
+    color: #ca8a04; /* 黃色 */
+  }
+  #borrowSection {
+    max-width: 450px;
+    margin: 0 auto 1rem auto;
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 10px rgb(0 0 0 / 0.07);
+  }
+  #qrCard {
+    max-width: 320px;
+    margin: 1rem auto;
+    background: white;
+    padding: 1rem 1.2rem;
+    border-radius: 1rem;
+    box-shadow: 0 0 15px rgb(0 0 0 / 0.1);
+    text-align: center;
+    display: none;
+  }
+  #qrCard img {
+    border-radius: 0.6rem;
+    max-width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+  }
+  #qrCard h3 {
+    margin: 0.8rem 0 0.3rem 0;
+  }
+  #qrCard p {
+    margin: 0 0 1rem 0;
+    font-weight: 500;
+    color: #555;
+  }
+  .admin label input[type=radio] {
+    margin-right: 0.5rem;
+    cursor: pointer;
+  }
+  #customReason {
+    width: 100%;
+    max-width: 400px;
+    margin-top: 0.5rem;
+    border-color: #e5e7eb;
+    display: none;
+  }
+  #adminQRCodes > div {
+    margin-bottom: 0.7rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.4rem;
+    font-size: 0.9rem;
+  }
+  #adminQRCodes button {
+    margin-left: 1rem;
+    background: #ef4444;
+  }
+  #qrcodeOrderPanel > div {
+    margin-bottom: 0.7rem;
+  }
+  #qrcodeOrderPanel select {
+    max-width: 280px;
+  }
+  @media (max-width: 480px) {
+    body, header, footer, .tutorial, .notice, .ranking, .admin, #borrowSection {
+      margin-left: 0.6rem;
+      margin-right: 0.6rem;
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+    input[type=text], input[type=number], input[type=password], textarea, select {
+      max-width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h2>📢 公告欄</h2>
+  <div id="notice">尚無公告</div>
+</header>
+
+<section class="tutorial">
+  <h3>🧾 新手教學</h3>
+  <ol>
+    <li>輸入名字</li>
+    <li>系統會自動分配你所需數量的 QR Code，並逐一顯示</li>
+    <li>完成每個 QR Code 後請輸入剩餘積分</li>
+  </ol>
+</section>
+
+<div id="systemStatusDisplay">系統狀態：載入中...</div>
+
+<section id="borrowSection">
+  <label for="username">你的名字：</label>
+  <input type="text" id="username" placeholder="請輸入名字" />
+  <label for="needCount">需要幾個 QR Code：</label>
+  <input type="number" id="needCount" min="1" max="9" value="1" />
+  <button id="borrowBtn" onclick="borrowNext()" disabled>我要借用</button>
+  <div style="margin-top:0.5rem;">剩餘可借用數量：<span id="availableCount">0</span></div>
+</section>
+
+<section id="qrCard">
+  <img id="qrImage" src="" alt="QR Code" />
+  <h3 id="qrName"></h3>
+  <p id="qrStatus"></p>
+  <button onclick="submitScore()">完成並輸入積分</button><br />
+  <button onclick="nextPage()">下一頁</button>
+  <button id="returnHomeBtn" onclick="returnHome()" style="display:none;">返回首頁</button>
+</section>
+
+<section class="ranking">
+  <h3>🏆 積分排行榜</h3>
+  <ul id="rankingList"><li>暫無積分資料</li></ul>
+</section>
+
+<footer>
+  <section id="adminLoginForm" class="admin-login">
+    <h3>管理員登入</h3>
+    <input type="text" id="adminAccount" placeholder="帳號" autocomplete="off" />
+    <input type="password" id="adminPassword" placeholder="密碼" autocomplete="off" />
+    <button onclick="adminLogin()">登入</button>
+  </section>
+
+  <button id="adminLogoutBtn" style="display:none; margin: 1rem auto; display: block;" onclick="adminLogout()">登出管理員</button>
+
+  <section class="admin" id="adminPanel" style="display:none;">
+    <h3>管理員控制台</h3>
+
+    <label>公告訊息：<br />
+      <textarea id="adminNotice" rows="3" placeholder="請輸入公告訊息"></textarea>
+    </label>
+    <button onclick="updateNotice()">更新公告</button>
+
+    <h4>系統狀態設定</h4>
+    <label><input type="radio" name="systemStatus" value="open" /> 開放借用</label>
+    <label><input type="radio" name="systemStatus" value="closed" /> 暫停借用（系統維護中）</label>
+    <label><input type="radio" name="systemStatus" value="custom" /> 特殊原因關閉</label>
+    <textarea id="customReason" rows="2" placeholder="請輸入特殊關閉原因"></textarea>
+    <button onclick="updateSystemStatus()">更新系統狀態</button>
+
+    <h4>借用狀態及釋放二維碼</h4>
+    <div id="adminQRCodes"></div>
+
+    <h4>設定二維碼借用優先順序</h4>
+    <div id="qrcodeOrderPanel"></div>
+    <button onclick="saveQrcodeOrder()">儲存優先順序</button>
+  </section>
+</footer>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+  import { getDatabase, ref, set, get, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCUAzmBwdVs8wKpR9i4HB2x4E08xv-_8rE",
+    authDomain: "g6-sys.firebaseapp.com",
+    databaseURL: "https://g6-sys-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "g6-sys",
+    storageBucket: "g6-sys.firebasestorage.app",
+    messagingSenderId: "874000345226",
+    appId: "1:874000345226:web:acb39a499e827135e3e573"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const qrList = [
+    { name: "Manhim", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278749/WhatsApp_Image_2025-07-22_at_12.39.27_PM_xkvl8y.jpg" },
+    { name: "Yung", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278749/WhatsApp_Image_2025-07-22_at_12.39.28_PM_1_sio7dp.jpg" },
+    { name: "Veronica", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_2_ofjmf1.jpg" },
+    { name: "Ha2", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_s69ynh.jpg" },
+    { name: "Yvonne", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_3_qx6dew.jpg" },
+    { name: "Bobby", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.28_PM_2_sjey4c.jpg" },
+    { name: "Ha", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278747/WhatsApp_Image_2025-07-22_at_12.39.30_PM_qp7i4b.jpg" },
+    { name: "Oi", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753278748/WhatsApp_Image_2025-07-22_at_12.39.29_PM_1_a5sp5c.jpg" },
+    { name: "ting", url: "https://res.cloudinary.com/dnc2h7vxz/image/upload/v1753339116/ting_g1afq7.jpg" }
+  ];
+
+  let user = '';
+  let needCount = 1;
+  let borrowedIndexes = [];
+  let currentIndexInBorrowed = 0;
+  let systemStatus = "open";
+  let systemReason = "";
+  let qrcodeOrder = [];
+
+  // 按鈕啟用判斷
+  function checkBorrowBtn() {
+    const userInput = document.getElementById('username').value.trim();
+    const count = parseInt(document.getElementById('needCount').value);
+    const btn = document.getElementById('borrowBtn');
+    btn.disabled = !userInput || isNaN(count) || count < 1 || systemStatus !== "open";
+  }
+
+  function showSystemStatus() {
+    const el = document.getElementById('systemStatusDisplay');
+    el.className = "";
+    let txt = "";
+    if(systemStatus === "open") {
+      txt = "開放借用中";
+      el.classList.add("open");
+    }
+    else if(systemStatus === "closed") {
+      txt = "暫停借用（系統維護中）";
+      el.classList.add("closed");
+    }
+    else if(systemStatus === "custom") {
+      txt = `關閉：${systemReason || "無特別說明"}`;
+      el.classList.add("custom");
+    }
+    else txt = "未知狀態";
+    el.textContent = "系統狀態：" + txt;
+    checkBorrowBtn();
+  }
+
+  function updateAvailableCount() {
+    get(ref(db, 'qrcodes')).then(snap => {
+      const data = snap.val() || {};
+      let count = 0;
+      for(let i = 0; i < qrList.length; i++) {
+        if(!data[i]) count++;
+      }
+      document.getElementById('availableCount').textContent = count;
+    });
+  }
+
+  function borrowNext() {
+    if(systemStatus !== "open") {
+      alert("目前系統不開放借用，請稍後再試。");
+      return;
+    }
+    user = document.getElementById('username').value.trim();
+    if (!user) return alert('請輸入名字');
+    needCount = parseInt(document.getElementById('needCount').value);
+    if(isNaN(needCount) || needCount < 1) return alert('請輸入有效的數量');
+
+    get(ref(db, 'qrcodes')).then(snap => {
+      const data = snap.val() || {};
+      borrowedIndexes = [];
+      for(const qrIndex of qrcodeOrder) {
+        if(!data[qrIndex] && borrowedIndexes.length < needCount) {
+          borrowedIndexes.push(qrIndex);
+        }
+        if(borrowedIndexes.length >= needCount) break;
+      }
+      if(borrowedIndexes.length < needCount) {
+        alert('剩餘可用數量不足，請減少借用數量');
+        return;
+      }
+      const updates = {};
+      const now = Date.now();
+      borrowedIndexes.forEach(i => {
+        updates[`qrcodes/${i}`] = { by: user, time: now, score: 0 };
+      });
+      update(ref(db), updates).then(() => {
+        currentIndexInBorrowed = 0;
+        showQRCode(borrowedIndexes[currentIndexInBorrowed]);
+        updateAvailableCount();
+      });
+    });
+  }
+
+  function showQRCode(index) {
+    document.getElementById('qrImage').src = qrList[index].url;
+    document.getElementById('qrName').textContent = qrList[index].name;
+    document.getElementById('qrStatus').textContent = `已分配給 ${user}`;
+    document.getElementById('qrCard').style.display = 'block';
+    document.getElementById('returnHomeBtn').style.display = 'none';
+  }
+
+  function submitScore() {
+    if(borrowedIndexes.length === 0) return alert('目前沒有可輸入積分的二維碼');
+    const qrIndex = borrowedIndexes[currentIndexInBorrowed];
+    const scoreStr = prompt(`請輸入 ${qrList[qrIndex].name} 的剩餘積分（數字）`);
+    if(!scoreStr || isNaN(scoreStr)) return alert('請輸入有效數字');
+    const score = parseInt(scoreStr);
+    update(ref(db, `qrcodes/${qrIndex}`), { score }).then(() => {
+      alert(`已更新 ${qrList[qrIndex].name} 的積分`);
+      nextPage();
+    });
+  }
+
+  function nextPage() {
+    currentIndexInBorrowed++;
+    if(currentIndexInBorrowed >= borrowedIndexes.length) {
+      document.getElementById('qrCard').style.display = 'none';
+      alert('已完成所有二維碼借用流程，謝謝！');
+      borrowedIndexes = [];
+      currentIndexInBorrowed = 0;
+      updateAvailableCount();
+      // 顯示返回首頁按鈕
+      document.getElementById('returnHomeBtn').style.display = 'block';
+    } else {
+      showQRCode(borrowedIndexes[currentIndexInBorrowed]);
+    }
+  }
+
+  function returnHome() {
+    document.getElementById('returnHomeBtn').style.display = 'none';
+    document.getElementById('username').value = "";
+    document.getElementById('needCount').value = "1";
+    document.getElementById('borrowBtn').disabled = true;
+  }
+
+  // 管理員登入 (簡易示範，實務請換安全做法)
+  let isAdmin = false;
+  function adminLogin() {
+    const acc = document.getElementById('adminAccount').value;
+    const pwd = document.getElementById('adminPassword').value;
+    // 範例帳密：admin / 1234
+    if(acc === 'admin' && pwd === '1234') {
+      isAdmin = true;
+      alert('管理員登入成功');
+      document.getElementById('adminLoginForm').style.display = 'none';
+      document.getElementById('adminLogoutBtn').style.display = 'block';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadAdminPanel();
+    } else {
+      alert('帳號或密碼錯誤');
+    }
+  }
+  function adminLogout() {
+    isAdmin = false;
+    document.getElementById('adminLoginForm').style.display = 'block';
+    document.getElementById('adminLogoutBtn').style.display = 'none';
+    document.getElementById('adminPanel').style.display = 'none';
+  }
+
+  // 管理員公告更新
+  function updateNotice() {
+    if(!isAdmin) return alert('請先登入管理員');
+    const noticeText = document.getElementById('adminNotice').value;
+    set(ref(db, 'system/notice'), noticeText).then(() => {
+      alert('公告已更新');
+      document.getElementById('notice').textContent = noticeText || "尚無公告";
+    });
+  }
+
+  // 系統狀態更新
+  function updateSystemStatus() {
+    if(!isAdmin) return alert('請先登入管理員');
+    const radios = document.querySelectorAll('input[name=systemStatus]');
+    let val = null;
+    radios.forEach(r => { if(r.checked) val = r.value; });
+    if(!val) return alert('請選擇系統狀態');
+    const reason = (val === 'custom') ? document.getElementById('customReason').value : '';
+    set(ref(db, 'system/status'), { status: val, reason }).then(() => {
+      alert('系統狀態已更新');
+      loadSystemStatus();
+    });
+  }
+
+  // 載入公告
+  function loadNotice() {
+    onValue(ref(db, 'system/notice'), snap => {
+      const val = snap.val();
+      document.getElementById('notice').textContent = val || "尚無公告";
+      if(isAdmin) document.getElementById('adminNotice').value = val || "";
+    });
+  }
+
+  // 載入系統狀態
+  function loadSystemStatus() {
+    onValue(ref(db, 'system/status'), snap => {
+      const val = snap.val() || {};
+      systemStatus = val.status || "open";
+      systemReason = val.reason || "";
+      showSystemStatus();
+      if(isAdmin) {
+        const radios = document.querySelectorAll('input[name=systemStatus]');
+        radios.forEach(r => { r.checked = (r.value === systemStatus); });
+        document.getElementById('customReason').value = systemReason;
+        document.getElementById('customReason').style.display = (systemStatus === 'custom') ? 'block' : 'none';
+      }
+    });
+  }
+
+  // 顯示或隱藏自訂原因欄位
+  document.getElementById('customReason').style.display = 'none';
+  document.querySelectorAll('input[name=systemStatus]').forEach(radio => {
+    radio.addEventListener('change', e => {
+      if(e.target.value === 'custom') {
+        document.getElementById('customReason').style.display = 'block';
+      } else {
+        document.getElementById('customReason').style.display = 'none';
+      }
+    });
+  });
+
+  // 管理員釋放借用 QR Code
+  function loadAdminPanel() {
+    // 讀取借用狀態
+    get(ref(db, 'qrcodes')).then(snap => {
+      const data = snap.val() || {};
+      const adminQRCodesDiv = document.getElementById('adminQRCodes');
+      adminQRCodesDiv.innerHTML = "";
+      for(let i = 0; i < qrList.length; i++) {
+        const borrowed = data[i];
+        const info = borrowed ? `已借出給：${borrowed.by}，積分：${borrowed.score || 0}` : '未借用';
+        const btnHTML = borrowed ? `<button onclick="releaseQRCode(${i})">釋放</button>` : '';
+        adminQRCodesDiv.innerHTML += `<div>${qrList[i].name} - ${info} ${btnHTML}</div>`;
+      }
+    });
+    loadQrcodeOrder();
+  }
+
+  function releaseQRCode(index) {
+    if(!isAdmin) return alert('請先登入管理員');
+    remove(ref(db, `qrcodes/${index}`)).then(() => {
+      alert(`已釋放 ${qrList[index].name} 的借用狀態`);
+      loadAdminPanel();
+      updateAvailableCount();
+    });
+  }
+
+  // 儲存與載入 QR Code 借用優先順序
+  function loadQrcodeOrder() {
+    get(ref(db, 'system/qrcodeOrder')).then(snap => {
+      const val = snap.val();
+      qrcodeOrder = Array.isArray(val) && val.length === qrList.length ? val : [...Array(qrList.length).keys()];
+      renderQrcodeOrderPanel();
+    });
+  }
+
+  function renderQrcodeOrderPanel() {
+    const panel = document.getElementById('qrcodeOrderPanel');
+    panel.innerHTML = "";
+    for(let i = 0; i < qrList.length; i++) {
+      const orderIdx = qrcodeOrder[i];
+      let options = "";
+      for(let j = 1; j <= qrList.length; j++) {
+        options += `<option value="${j}" ${qrcodeOrder.indexOf(i) + 1 === j ? "selected" : ""}>${j}</option>`;
+      }
+      panel.innerHTML += `
+        <div>
+          <label>${qrList[i].name} 借用優先順序：
+            <select data-index="${i}" onchange="onOrderChange(event)">${options}</select>
+          </label>
+        </div>`;
+    }
+  }
+
+  function onOrderChange(e) {
+    const idx = parseInt(e.target.getAttribute('data-index'));
+    const val = parseInt(e.target.value);
+    // 重新排序 qrcodeOrder 陣列
+    // 先找原本 i 在 qrcodeOrder 中的位置
+    const oldPos = qrcodeOrder.indexOf(idx);
+    if(oldPos === val - 1) return; // 無變動
+    // 移除原本位置的 i
+    qrcodeOrder.splice(oldPos,1);
+    // 插入到新位置
+    qrcodeOrder.splice(val - 1, 0, idx);
+    renderQrcodeOrderPanel();
+  }
+
+  function saveQrcodeOrder() {
+    if(!isAdmin) return alert('請先登入管理員');
+    set(ref(db, 'system/qrcodeOrder'), qrcodeOrder).then(() => {
+      alert('借用優先順序已儲存');
+    });
+  }
+
+  // 載入積分排行榜
+  function loadRanking() {
+    get(ref(db, 'qrcodes')).then(snap => {
+      const data = snap.val() || {};
+      const scores = {};
+      for(let i = 0; i < qrList.length; i++) {
+        const d = data[i];
+        if(d && d.by && typeof d.score === "number") {
+          if(!scores[d.by]) scores[d.by] = 0;
+          scores[d.by] += d.score;
+        }
+      }
+      const rankList = Object.entries(scores)
+        .sort((a,b) => b[1] - a[1]);
+      const ul = document.getElementById('rankingList');
+      ul.innerHTML = "";
+      if(rankList.length === 0) {
+        ul.innerHTML = "<li>暫無積分資料</li>";
+      } else {
+        rankList.forEach(([name, totalScore]) => {
+          ul.innerHTML += `<li>${name}：${totalScore} 分</li>`;
+        });
+      }
+    });
+  }
+
+  // 綁定輸入事件檢查按鈕
+  document.getElementById('username').addEventListener('input', checkBorrowBtn);
+  document.getElementById('needCount').addEventListener('input', checkBorrowBtn);
+
+  // 初始載入
+  window.onload = () => {
+    loadNotice();
+    loadSystemStatus();
+    updateAvailableCount();
+    loadRanking();
+  };
+</script>
+
+</body>
 </html>
